@@ -2,18 +2,19 @@ package org.locademiaz.jbpm.migrator;
 
 import java.io.*;
 
-import org.drools.KnowledgeBase;
-import org.drools.KnowledgeBaseFactory;
-import org.drools.builder.KnowledgeBuilder;
-import org.drools.builder.KnowledgeBuilderFactory;
-import org.drools.builder.ResourceType;
-import org.drools.io.ResourceFactory;
-import org.drools.process.instance.WorkItemHandler;
-import org.drools.runtime.StatefulKnowledgeSession;
-import org.drools.runtime.process.WorkItem;
-import org.drools.runtime.process.WorkItemManager;
 import org.junit.Assert;
 import org.junit.Test;
+import org.kie.api.KieServices;
+import org.kie.api.builder.KieBuilder;
+import org.kie.api.builder.KieFileSystem;
+import org.kie.api.builder.KieModule;
+import org.kie.api.io.Resource;
+import org.kie.api.io.ResourceType;
+import org.kie.api.runtime.KieContainer;
+import org.kie.api.runtime.KieSession;
+import org.kie.api.runtime.process.WorkItem;
+import org.kie.api.runtime.process.WorkItemHandler;
+import org.kie.api.runtime.process.WorkItemManager;
 import org.xml.sax.SAXException;
 
 public class MigrationTest {
@@ -77,11 +78,24 @@ public class MigrationTest {
                                           String processId,
                                           String workItemName,
                                           WorkItemHandler handler) {
-        final KnowledgeBuilder kbuilder = KnowledgeBuilderFactory.newKnowledgeBuilder();
-        kbuilder.add(ResourceFactory.newInputStreamResource(process), processType);
-        final KnowledgeBase kbase = KnowledgeBaseFactory.newKnowledgeBase();
-        kbase.addKnowledgePackages(kbuilder.getKnowledgePackages());
-        final StatefulKnowledgeSession ksession = kbase.newStatefulKnowledgeSession();
+        final KieServices kieServices = KieServices.Factory.get();
+        final KieFileSystem kfs = kieServices.newKieFileSystem();
+        String extension;
+        if (processType == ResourceType.BPMN2) {
+            extension = ".bpmn2";
+        } else if (processType == ResourceType.DRF) {
+            extension = ".rf";
+        } else {
+            throw new IllegalArgumentException("Unsupported resource type: " + processType);
+        }
+        String path = "src/main/resources/process" + extension;
+        Resource resource = kieServices.getResources().newInputStreamResource(process);
+        kfs.write(path, resource);
+        final KieBuilder kieBuilder = kieServices.newKieBuilder(kfs);
+        kieBuilder.buildAll();
+        final KieModule kieModule = kieBuilder.getKieModule();
+        final KieContainer kieContainer = kieServices.newKieContainer(kieModule.getReleaseId());
+        final KieSession ksession = kieContainer.newKieSession();
         ksession.getWorkItemManager().registerWorkItemHandler(workItemName, handler);
         ksession.startProcess(processId);
         ksession.dispose();
